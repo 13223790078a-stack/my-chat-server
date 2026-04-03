@@ -6,52 +6,81 @@
     <title>中越云端私人专线</title>
     <style>
         body { margin: 0; background: #ededed; font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; }
-        #chat { flex: 1; overflow-y: auto; padding: 15px; }
-        .bubble { background: #fff; padding: 10px; border-radius: 10px; margin-bottom: 10px; max-width: 80%; width: fit-content; word-break: break-all; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
-        .img-chat { max-width: 100%; border-radius: 5px; margin-top: 5px; }
-        .input-area { background: #f7f7f7; padding: 10px; display: flex; gap: 10px; border-top: 1px solid #ddd; }
-        input[type="text"] { flex: 1; border: none; padding: 10px; border-radius: 5px; outline: none; }
-        button { background: #07c160; color: #fff; border: none; padding: 0 15px; border-radius: 5px; cursor: pointer; }
-        .sys { text-align: center; font-size: 12px; color: #999; margin: 10px 0; }
+        #chat { flex: 1; overflow-y: auto; padding: 15px; display: flex; flex-direction: column; }
+        
+        /* 基础气泡样式 */
+        .msg-wrapper { margin-bottom: 15px; display: flex; flex-direction: column; max-width: 85%; }
+        .bubble { padding: 10px 14px; border-radius: 8px; position: relative; word-break: break-all; font-size: 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
+        .name-label { font-size: 12px; color: #888; margin-bottom: 4px; }
+
+        /* 对方发的消息：在左边，白色 */
+        .msg-left { align-self: flex-start; }
+        .msg-left .bubble { background: #fff; border-top-left-radius: 2px; }
+
+        /* 我发的消息：在右边，绿色 */
+        .msg-right { align-self: flex-end; }
+        .msg-right .name-label { text-align: right; }
+        .msg-right .bubble { background: #95ec69; border-top-right-radius: 2px; }
+
+        .img-chat { max-width: 100%; border-radius: 5px; margin-top: 5px; display: block; }
+        .input-area { background: #f7f7f7; padding: 10px; display: flex; gap: 10px; border-top: 1px solid #ddd; align-items: center; }
+        input[type="text"] { flex: 1; border: none; padding: 12px; border-radius: 5px; outline: none; font-size: 16px; }
+        button { background: #07c160; color: #fff; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        .sys { text-align: center; font-size: 12px; color: #999; margin: 10px 0; width: 100%; }
     </style>
 </head>
 <body>
     <div id="chat"><div class="sys">正在呼叫云端服务器...</div></div>
     <div class="input-area">
         <input type="file" id="f" style="display:none" onchange="upImg()">
-        <button onclick="document.getElementById('f').click()" style="background:#888; color:white;">+</button>
-        <input type="text" id="i" placeholder="输入消息...">
+        <button onclick="document.getElementById('f').click()" style="background:#888;">+</button>
+        <input type="text" id="i" placeholder="输入消息..." onkeydown="if(event.keyCode==13)send()">
         <button onclick="send()">发送</button>
     </div>
 
     <script>
-        // 自动为您配置了 Render 上的永久云端地址
         const ws = new WebSocket("wss://my-chat-server-n5er.onrender.com");
         const box = document.getElementById('chat');
-        const user = "成员" + Math.floor(Math.random()*999);
+        // 关键：给当前用户起一个唯一的ID，用来区分“我”和“别人”
+        const myId = "User_" + Math.floor(Math.random()*10000);
 
-        ws.onopen = () => box.innerHTML = `<div class="sys">✅ 云端专线已接通 (您的ID: ${user})</div>`;
+        ws.onopen = () => box.innerHTML = `<div class="sys">✅ 云端专线已接通 (ID: ${myId})</div>`;
+        
         ws.onmessage = (e) => {
             const d = JSON.parse(e.data);
+            const isMe = d.senderId === myId; // 判断是不是我自己发的
+            
             const content = d.type === 'text' ? d.content : `<img src="${d.content}" class="img-chat" onclick="window.open(this.src)">`;
-            box.innerHTML += `<div class="msg"><small style="color:#888">${d.name}</small><div class="bubble">${content}</div></div>`;
+            
+            // 根据身份决定靠左还是靠右
+            const msgHtml = `
+                <div class="msg-wrapper ${isMe ? 'msg-right' : 'msg-left'}">
+                    <div class="name-label">${d.name} ${isMe ? '(我)' : ''}</div>
+                    <div class="bubble">${content}</div>
+                </div>
+            `;
+            
+            box.innerHTML += msgHtml;
             box.scrollTop = box.scrollHeight;
         };
+
         ws.onclose = () => box.innerHTML += `<div class="sys" style="color:red">❌ 与云端失去联系，正在重连...</div>`;
 
         function send() {
             const val = document.getElementById('i').value;
             if(val && ws.readyState === 1) {
-                ws.send(JSON.stringify({type:'text', name:user, content:val}));
+                // 发送时带上 senderId
+                ws.send(JSON.stringify({type:'text', name:'成员', senderId: myId, content:val}));
                 document.getElementById('i').value = '';
             }
         }
+
         function upImg() {
             const file = document.getElementById('f').files[0];
             const reader = new FileReader();
             reader.onload = (e) => {
                 if(ws.readyState === 1) {
-                    ws.send(JSON.stringify({type:'image', name:user, content:e.target.result}));
+                    ws.send(JSON.stringify({type:'image', name:'成员', senderId: myId, content:e.target.result}));
                 }
             };
             if(file) reader.readAsDataURL(file);
