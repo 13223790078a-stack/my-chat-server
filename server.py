@@ -1,35 +1,36 @@
-import asyncio
-import websockets
-import json
+import uvicorn
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 import os
-import http
 
+app = FastAPI()
 connected_clients = set()
 
-# 处理聊天逻辑
-async def chat_handler(websocket):
+# 1. 专门应付 Render 保安的检查 (支持正常访问和 HEAD 敲门)
+@app.get("/")
+@app.head("/")
+async def ping():
+    return {"status": "ok", "message": "保安你好，运行正常！"}
+
+# 2. 我们的跨国聊天隧道
+@app.websocket("/")
+async def chat(websocket: WebSocket):
+    await websocket.accept()
     connected_clients.add(websocket)
     try:
-        async for message in websocket:
+        while True:
+            # 接收前端发来的包裹
+            data = await websocket.receive_text()
+            # 瞬间广播给群里所有人（包括自己）
             for client in list(connected_clients):
                 try:
-                    await client.send(message)
-                except:
+                    await client.send_text(data)
+                except Exception:
                     pass
-    finally:
+    except WebSocketDisconnect:
         connected_clients.remove(websocket)
 
-# 核心：这个函数专门应付 Render 的“巡逻员”，让它能顺利上线
-async def process_request(path, request_headers):
-    if path == "/":
-        return http.HTTPStatus.OK, [], b"Server is running!"
-    return None
-
-async def main():
-    port = int(os.environ.get("PORT", 8765))
-    # 加入了 process_request 
-    async with websockets.serve(chat_handler, "0.0.0.0", port, process_request=process_request):
-        await asyncio.Future()
-
 if __name__ == "__main__":
-    asyncio.run(main())
+    # 获取 Render 分配的端口
+    port = int(os.environ.get("PORT", 8765))
+    print(f"🚀 终极云端服务器启动，端口: {port}")
+    uvicorn.run(app, host="0.0.0.0", port=port)
